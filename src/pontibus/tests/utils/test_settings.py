@@ -4,7 +4,7 @@
 import numpy as np
 import pytest
 from numpy.testing import assert_equal
-from openff.interchange.components._packmol import UNIT_CUBE
+from openff.packmol import UNIT_CUBE
 from openff.units import unit
 
 from pontibus.utils.settings import (

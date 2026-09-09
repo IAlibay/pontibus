@@ -4,14 +4,16 @@ import logging
 
 import numpy as np
 import numpy.typing as npt
-from openff.interchange.components._packmol import (
+from openff.packmol import (
     RHOMBIC_DODECAHEDRON,
     UNIT_CUBE,
+    pack_box,
+)
+from openff.packmol._packmol import (
     _check_add_positive_mass,
     _check_box_shape_shape,
     _max_dist_between_points,
     _scale_box,
-    pack_box,
 )
 from openff.toolkit import Molecule as OFFMolecule
 from openff.toolkit import Topology

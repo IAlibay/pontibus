@@ -17,7 +17,7 @@ from gufe.settings.typing import (
 from openfe.protocols.openmm_utils.omm_settings import (
     BaseSolvationSettings,
 )
-from openff.interchange.components._packmol import _box_vectors_are_in_reduced_form
+from openff.packmol._packmol import _box_vectors_are_in_reduced_form
 from openff.units import unit
 from pydantic import field_validator, model_validator
 

@@ -4,7 +4,7 @@
 import pytest
 from numpy.testing import assert_allclose
 from openff.interchange import Interchange
-from openff.interchange.components._packmol import solvate_topology
+from openff.packmol import solvate_topology
 from openff.toolkit import ForceField, Molecule, Topology
 from openmm import CMMotionRemover, MonteCarloBarostat, System
 from openmm import unit as omm_unit
