@@ -19,17 +19,17 @@ jobs:
   mypy:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
       - name: "Setup Micromamba"
-        uses: mamba-org/setup-micromamba@v2
+        uses: mamba-org/setup-micromamba@v3
         with:
           environment-file: environment.yml
           environment-name: pontibus
           cache-environment: true
           cache-downloads: true
           create-args: >-
-            python=3.11
+            python=3.12
           init-shell: bash
 
       - name: "Install steps"

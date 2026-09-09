@@ -316,10 +316,10 @@ def test_dry_run_ligand(
     solv_backend,
     n_atoms,
     solv_settings,
-    tmpdir,
+    tmp_path,
 ):
     # this might be a bit time consuming
-    solv_settings.output_settings.output_indices = "resname AAA"
+    solv_settings.output_settings.output_indices = "resname LIG"
 
     if solv_backend == "openmm":
         solv_settings.solvation_settings = InterchangeOpenMMSolvationSettings()
@@ -341,67 +341,70 @@ def test_dry_run_ligand(
     dag_setup_unit = _get_units(dag.protocol_units, HybridTopProtocolSetupUnit)[0]
     dag_sim_unit = _get_units(dag.protocol_units, HybridTopologyMultiStateSimulationUnit)[0]
 
-    with tmpdir.as_cwd():
-        setup_results = dag_setup_unit.run(dry=True)
+    setup_results = dag_setup_unit.run(
+        dry=True, scratch_basepath=tmp_path, shared_basepath=tmp_path
+    )
 
-        sim_results = dag_sim_unit.run(
-            system=setup_results["hybrid_system"],
-            positions=setup_results["hybrid_positions"],
-            selection_indices=setup_results["selection_indices"],
-            dry=True,
-        )
+    sim_results = dag_sim_unit.run(
+        system=setup_results["hybrid_system"],
+        positions=setup_results["hybrid_positions"],
+        selection_indices=setup_results["selection_indices"],
+        dry=True,
+        scratch_basepath=tmp_path,
+        shared_basepath=tmp_path,
+    )
 
-        # Check the barostat in both the sampler and the htf
-        sampler = sim_results["sampler"]
-        assert isinstance(sampler, MultiStateSampler)
-        assert sampler.is_periodic
-        assert isinstance(sampler._thermodynamic_states[0].barostat, MonteCarloBarostat)
-        assert sampler._thermodynamic_states[1].pressure == 1 * omm_unit.bar
+    # Check the barostat in both the sampler and the htf
+    sampler = sim_results["sampler"]
+    assert isinstance(sampler, MultiStateSampler)
+    assert sampler.is_periodic
+    assert isinstance(sampler._thermodynamic_states[0].barostat, MonteCarloBarostat)
+    assert sampler._thermodynamic_states[1].pressure == 1 * omm_unit.bar
 
-        htf = setup_results["hybrid_factory"]
-        assert htf.hybrid_system.usesPeriodicBoundaryConditions()
-        barostats = [f for f in htf.hybrid_system.getForces() if isinstance(f, MonteCarloBarostat)]
-        assert len(barostats) == 1
+    htf = setup_results["hybrid_factory"]
+    assert htf.hybrid_system.usesPeriodicBoundaryConditions()
+    barostats = [f for f in htf.hybrid_system.getForces() if isinstance(f, MonteCarloBarostat)]
+    assert len(barostats) == 1
 
-        # Check we have the right number of atoms in the PDBs
-        pdb = mdt.load_pdb("hybrid_system.pdb")
-        assert pdb.n_atoms == 16
-        pdb = mdt.load_pdb("full_hybrid_system.pdb")
-        assert pdb.n_atoms == n_atoms
+    # Check we have the right number of atoms in the PDBs
+    pdb = mdt.load_pdb(tmp_path / "hybrid_system.pdb")
+    assert pdb.n_atoms == 16
+    pdb = mdt.load_pdb(tmp_path / "full_hybrid_system.pdb")
+    assert pdb.n_atoms == n_atoms
 
-        # Check system forces
-        system = htf.hybrid_system
-        assert len(system.getForces()) == 10
+    # Check system forces
+    system = htf.hybrid_system
+    assert len(system.getForces()) == 10
 
-        def assert_force_num(system, forcetype, number):
-            forces = [f for f in system.getForces() if isinstance(f, forcetype)]
-            assert len(forces) == number
+    def assert_force_num(system, forcetype, number):
+        forces = [f for f in system.getForces() if isinstance(f, forcetype)]
+        assert len(forces) == number
 
-        assert_force_num(system, NonbondedForce, 1)
-        assert_force_num(system, CustomNonbondedForce, 1)
-        assert_force_num(system, CustomBondForce, 2)
-        assert_force_num(system, CustomAngleForce, 1)
-        assert_force_num(system, CustomTorsionForce, 1)
-        assert_force_num(system, HarmonicBondForce, 1)
-        assert_force_num(system, HarmonicAngleForce, 1)
-        assert_force_num(system, PeriodicTorsionForce, 1)
-        assert_force_num(system, MonteCarloBarostat, 1)
+    assert_force_num(system, NonbondedForce, 1)
+    assert_force_num(system, CustomNonbondedForce, 1)
+    assert_force_num(system, CustomBondForce, 2)
+    assert_force_num(system, CustomAngleForce, 1)
+    assert_force_num(system, CustomTorsionForce, 1)
+    assert_force_num(system, HarmonicBondForce, 1)
+    assert_force_num(system, HarmonicAngleForce, 1)
+    assert_force_num(system, PeriodicTorsionForce, 1)
+    assert_force_num(system, MonteCarloBarostat, 1)
 
-        # Check the nonbonded force is NoCutoff
-        nonbond = [f for f in system.getForces() if isinstance(f, NonbondedForce)]
-        assert nonbond[0].getNonbondedMethod() == NonbondedForce.PME
-        # Check switch distances
-        assert nonbond[0].getUseSwitchingFunction()
-        assert nonbond[0].getSwitchingDistance() == 0.8 * omm_unit.nanometer
-        custom_nonbond = [f for f in system.getForces() if isinstance(f, CustomNonbondedForce)]
-        assert custom_nonbond[0].getUseSwitchingFunction()
-        assert custom_nonbond[0].getSwitchingDistance() == 0.8 * omm_unit.nanometer
+    # Check the nonbonded force is NoCutoff
+    nonbond = [f for f in system.getForces() if isinstance(f, NonbondedForce)]
+    assert nonbond[0].getNonbondedMethod() == NonbondedForce.PME
+    # Check switch distances
+    assert nonbond[0].getUseSwitchingFunction()
+    assert nonbond[0].getSwitchingDistance() == 0.8 * omm_unit.nanometer
+    custom_nonbond = [f for f in system.getForces() if isinstance(f, CustomNonbondedForce)]
+    assert custom_nonbond[0].getUseSwitchingFunction()
+    assert custom_nonbond[0].getSwitchingDistance() == 0.8 * omm_unit.nanometer
 
-        # Check the unique, core & env atoms
-        assert len(htf._unique_old_atoms) == 1
-        assert len(htf._unique_new_atoms) == 4
-        assert len(htf._core_old_to_new_map) == 11
-        assert len(htf._env_old_to_new_map) == (n_atoms - 16)
+    # Check the unique, core & env atoms
+    assert len(htf._unique_old_atoms) == 1
+    assert len(htf._unique_new_atoms) == 4
+    assert len(htf._core_old_to_new_map) == 11
+    assert len(htf._env_old_to_new_map) == (n_atoms - 16)
 
 
 def test_dry_run_vacuum_user_charges(benzene_modifications, vac_settings, tmpdir):

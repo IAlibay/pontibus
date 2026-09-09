@@ -3,15 +3,12 @@ channels:
   - conda-forge
 dependencies:
   - pip
-  - gufe >=1.7
   - openff-toolkit >0.16.0
   - openff-interchange >=0.5
   - openff-nagl-base >=0.3.3
   # OpenFE stack deps
-  - openfe >= 1.9.0
+  - dill  # needed for kartograf
   - duecredit<0.10
-  - kartograf>=1.0.0
-  - konnektor
   - lomap2>=3.0.0
   - numpy
   - networkx
@@ -24,7 +21,7 @@ dependencies:
   - cinnabar ~=0.6
   - click
   - typing-extensions
-  - openmm >=8.4,<8.6
+  - openmm >=8.4
   - openmmtools >=0.25.0
   - openmmforcefields
   - openfe-analysis >=0.3.1
@@ -34,3 +31,8 @@ dependencies:
   - pytest
   - pytest-cov
   - pytest-xdist
+  - pip:
+    - git+https://github.com/OpenFreeEnergy/kartograf@main  # needs gufe which pins to pydantic < 2.13. update this once gufe v1.13 is released on conda-forge
+    - git+https://github.com/OpenFreeEnergy/konnektor@main
+    - git+https://github.com/OpenFreeEnergy/gufe@main
+    - git+https://github.com/OpenFreeEnergy/openfe@main

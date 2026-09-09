@@ -37,7 +37,7 @@ jobs:
     needs:
       - start-aws-runner
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
       - name: Schedule auto-shutdown after 24 hours
         # This is the failsafe if timeout-minutes above fails
@@ -51,7 +51,7 @@ jobs:
         run: "docker version || true"
 
       - name: "Setup Micromamba"
-        uses: mamba-org/setup-micromamba@v2
+        uses: mamba-org/setup-micromamba@v3
         with:
           environment-file: environment.yml
           environment-name: pontibus
@@ -59,7 +59,7 @@ jobs:
             channels:
               - conda-forge
           create-args: >-
-            python=3.13
+            python=3.14
 
       - name: "Check if OpenMM can get a GPU"
         run: python -m openmm.testInstallation

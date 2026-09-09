@@ -124,7 +124,7 @@ def test_dry_run_vacuum_benzene(charged_benzene, dry_settings, method, tmpdir):
 def test_dry_run_solv_benzene(
     experimental, alpha, a, b, c, correction, charged_benzene, dry_settings, tmpdir
 ):
-    dry_settings.solvent_output_settings.output_indices = "resname AAA"
+    dry_settings.solvent_output_settings.output_indices = "resname LIG"
     # Set a non-default barostat frequency to make sure it goes all the way
     dry_settings.integrator_settings.barostat_frequency = 125 * unit.timestep
     dry_settings.alchemical_settings.experimental = experimental

@@ -37,7 +37,7 @@ jobs:
     needs:
       - start-aws-runner
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
       - name: Print disk usage
         run: "df -h"
@@ -49,7 +49,7 @@ jobs:
         run: "nvidia-smi"
 
       - name: "Setup Micromamba"
-        uses: mamba-org/setup-micromamba@v2
+        uses: mamba-org/setup-micromamba@v3
         with:
           environment-file: environment.yml
           environment-name: pontibus
@@ -57,7 +57,7 @@ jobs:
             channels:
               - conda-forge
           create-args: >-
-            python=3.13
+            python=3.14
             cuda-version=12.8
 
       - name: "Check if OpenMM can get a GPU"
