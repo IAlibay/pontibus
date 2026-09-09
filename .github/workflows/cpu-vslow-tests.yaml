@@ -83,8 +83,8 @@ jobs:
           PONTIBUS_CPUVSLOW_TESTS: TRUE
           PONTIBUS_GPU_TESTS: FALSE
         run: |
-          # The -m flag will only run tests with @pytest.mark.cpuvslow
-          pytest -n logical -vv --durations=10 -m cpuvslow
+          # Run all tests, including cpuvslow, but not gpu tests
+          pytest -n logical -vv --durations=10 --cpuvslow
 
   stop-aws-runner:
     runs-on: ubuntu-latest
