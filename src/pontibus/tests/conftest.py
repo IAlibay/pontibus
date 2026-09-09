@@ -8,7 +8,7 @@ import gufe
 import openfe
 import pytest
 from gufe import SmallMoleculeComponent
-from openff.toolkit import Topology
+from openff.toolkit import ForceField, Topology
 from openff.units import unit
 from rdkit import Chem
 
@@ -204,6 +204,17 @@ def T4_protein_component():
         comp = gufe.ProteinComponent.from_pdb_file(fn, name="T4_protein")
 
     return comp
+
+
+@pytest.fixture(scope="session")
+def vsite_offxml():
+    offxml = (
+        resources.files("pontibus.tests.data.forcefields")
+        / "vsites-v3_n2r-vdw-dimers_hmix-only-v2-torsions.offxml"
+    ).as_posix()
+
+    ff = ForceField(offxml)
+    return ff.to_string()
 
 
 @pytest.fixture(scope="session")

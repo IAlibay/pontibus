@@ -1,0 +1,10 @@
+smiles,pontibus_dG,pontibus_err,gromacs_dG,experiment
+c1cc(ccc1Br)Br,-0.75,0.01,-0.74,-2.3
+c1cc(ccc1O)Br,-5.65,0.04,-5.70,-5.85
+c1c(c(=O)[nH]c(=O)[nH]1)Br,-16.61,0.11,-16.69,-18.17
+CBr,0.04,0.04,0.05,-0.82
+C(CBr)Cl,-1.47,0.08,-1.69,-1.95
+CC(C)(C)Br,0.26	0.01,0.38,0.84
+CCCCCBr,0.99,0.03,1.05,-0.1
+CC[C@H](C)n1c(=O)c(c([nH]c1=O)C)Br,-12.14,0.01,-12.28,-9.73
+C(F)(F)(F)Br,2.24,0.03,2.26,1.79

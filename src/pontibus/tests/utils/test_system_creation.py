@@ -34,6 +34,7 @@ from pontibus.utils.settings import (
 from pontibus.utils.system_creation import (
     _assign_comp_resnames_and_keys,
     _check_and_deduplicate_charged_mols,
+    _fill_vsite_compresids,
     _get_force_field,
     _protein_split_combine_interchange,
     _proteincomp_to_topology,
@@ -599,7 +600,7 @@ def test_nonwater_solvent_short(smc_components_benzene_named, smiles):
     assert interchange.topology.n_molecules == 101
 
 
-@pytest.mark.cpuvslow
+@pytest.mark.cpuvslow  # pragma: no cover
 @pytest.mark.parametrize(
     "solvent_smiles, solute_smiles",
     [
@@ -1178,6 +1179,10 @@ class BaseSystemTests:
 
 
 class TestVacuumUnamedBenzene(BaseSystemTests):
+    """
+    TODO: add test checking we get a warning on renaming
+    """
+
     smc_comps = "smc_components_benzene_unnamed"
     resname = "AAA"
     nonbond_index = 0
@@ -1592,6 +1597,19 @@ class TestSolventOPCNamedBenzene(TestSolventOPC3UnamedBenzene):
             assert c1 == c2
             assert s1 == s2
             assert e2 == e2
+
+    def test_comp_resids(self, interchange_system, request, num_residues, num_waters):
+        """
+        Must redefine to account for virtual site residues in comp_resids
+        """
+        _, comp_resids = interchange_system
+
+        assert len(comp_resids) == 2
+        assert list(comp_resids)[0] == next(iter(request.getfixturevalue(self.smc_comps)))
+        assert list(comp_resids)[1] == ExtendedSolventComponent()
+        assert_equal(list(comp_resids.values())[0], [0])
+        # We have 2 residues per water instead of 1 (1 extra for the vsite)
+        assert_equal(list(comp_resids.values())[1], [i for i in range(1, (num_waters * 2) + 1)])
 
     def test_virtual_sites(self, omm_system, num_waters, num_particles, nonbonds):
         for index in range(num_particles, num_particles - num_waters, -1):
@@ -2160,16 +2178,78 @@ def test_box_setting_dodecahedron(
             )
 
 
-"""
+class TestVsitesCompresids:
+    @pytest.fixture(scope="class")
+    def solute(self):
+        offmol = Molecule.from_smiles("c1cc(ccc1O)Br")
+        offmol.generate_conformers(n_conformers=1)
+        offmol.assign_partial_charges(partial_charge_method="gasteiger")
 
-5. Unnamed solvent
-  - Check we get warned about renaming
-6. Named solvent with inconsistent name
-7. Duplicate named smcs
-12. Check we get the right residues
-13. Check we get the right number of atoms
-  - with a solvent w/ virtual sites
-  - check omm topology indices match virtual sites (it doesn't!)
-14. Check nonbonded cutoffs set via ffsettings
-15. Check charged mols tests.
-"""
+        return SmallMoleculeComponent.from_openff(offmol)
+
+    @pytest.fixture(scope="class")
+    def interchange_system(self, solute, water_off, vsite_offxml):
+        smc_components = {solute: solute.to_openff()}
+        interchange, comp_resids = interchange_system_creation(
+            ffsettings=InterchangeFFSettings(
+                forcefields=[vsite_offxml, "opc.offxml"],
+            ),
+            solvation_settings=PackmolSolvationSettings(
+                number_of_solvent_molecules=1000, solvent_padding=None
+            ),
+            smc_components=smc_components,
+            protein_component=None,
+            solvent_component=ExtendedSolventComponent(),
+            solvent_offmol=water_off,
+        )
+
+        return interchange, comp_resids
+
+    def test_num_particles(self, interchange_system):
+
+        interchange, comp_resids = interchange_system
+        openmm_system = interchange.to_openmm_system()
+        # 1000 * 4 sites + 13 atoms + 1 site
+        assert openmm_system.getNumParticles() == (4000 + 14)
+
+    def test_num_missing_error(self, interchange_system):
+
+        interchange, comp_resids = interchange_system
+
+        n_residues = interchange.to_openmm_topology(collate=False).getNumResidues()
+
+        # Claim more residues than the topology has, so num_missing goes negative
+        broken_comp_resids = {key: val.copy() for key, val in comp_resids.items()}
+        first_key = next(iter(broken_comp_resids))
+        broken_comp_resids[first_key] = np.concatenate(
+            [broken_comp_resids[first_key], np.arange(n_residues, 2 * n_residues)]
+        ).astype(int)
+
+        errmsg = "There are fewer OpenMM Topology residues"
+        with pytest.raises(ValueError, match=errmsg):
+            _fill_vsite_compresids(interchange, broken_comp_resids)
+
+    def test_non_unique_resids(self, interchange_system):
+
+        interchange, comp_resids = interchange_system
+
+        new_comp_resids = {key: np.append(val, val) for key, val in comp_resids.items()}
+
+        with pytest.raises(ValueError, match="Non unique residue indexes"):
+            _fill_vsite_compresids(interchange, new_comp_resids)
+
+    def test_fill_compresids(self, interchange_system, solute):
+        interchange, comp_resids = interchange_system
+
+        omm_top = interchange.to_openmm_topology(collate=False)
+        assert omm_top.getNumResidues() == 2002
+
+        # 2 alchemical residues (1 normal atoms, 1 vsite), rest is water
+        assert len(comp_resids[ExtendedSolventComponent()]) == 2000
+        assert_equal(
+            comp_resids[ExtendedSolventComponent()],
+            np.array([i for i in range(1, 1001)] + [i for i in range(1002, 2002)]),
+        )
+        assert len(comp_resids[solute]) == 2
+        assert comp_resids[solute][0] == 0
+        assert comp_resids[solute][1] == 1001

@@ -7,6 +7,7 @@ from string import ascii_uppercase
 
 import numpy as np
 import numpy.typing as npt
+import openmm
 from gufe import Component, ProteinComponent, SmallMoleculeComponent, SolventComponent
 from openff.interchange import Interchange
 from openff.toolkit import ForceField, Topology
@@ -30,6 +31,161 @@ from pontibus.utils.settings import (
 from pontibus.utils.system_solvation import openmm_solvation, packmol_solvation
 
 logger = logging.getLogger(__name__)
+
+
+def _get_virtual_site_components(
+    omm_system: openmm.System,
+    omm_topology: openmm.app.Topology,
+    nonvsite_comp_resids: dict[Component, npt.NDArray],
+    nonvsite_resids: set[int],
+) -> dict[Component, list[int]]:
+    """
+    Helper method to get a comp_resids dictionary for the virtual sites in the system.
+
+    Parameters
+    ----------
+    omm_system : openmm.System
+      The OpenMM System to look through.
+    omm_topology : openmm.Topology
+      The OpenMM Topology to look through.
+    nonvsite_comp_resids : dict[Component, list[int]]
+      The dictionary of components to residue indexes
+      for the non virtual site atoms.
+    nonvsite_resids : set[int]
+      A set of residue indexes for the non virtual site atoms.
+
+    Returns
+    -------
+    viste_comp_resids : dict[Component, list[int]]
+      A dictionary with lists of residue indexes keyed by Component
+      for all virtual sites in the System.
+    """
+    # Create a temporary comp_resids dictionary for virtual sites
+    vsites_comp_resids: dict[Component, list[int]] = {comp: [] for comp in nonvsite_comp_resids}
+
+    # Invert comp_resids to be able to know which residue is which Component
+    resids_to_comp: dict[int, Component] = {
+        int(resid): comp for comp, resids in nonvsite_comp_resids.items() for resid in resids
+    }
+
+    # Create a list of atoms for later use
+    omm_atoms = list(omm_topology.atoms())
+
+    # Now loop over the residues and find parents
+    for residue in omm_topology.residues():
+        # Skip if we already know you
+        if residue.index in nonvsite_resids:
+            continue
+
+        residue_component: set[Component] = set()
+        for atom in residue.atoms():
+            if not omm_system.isVirtualSite(atom.index):
+                errmsg = (
+                    f"OpenMM Topology residue {residue.index} was expected to "
+                    "contain only virtual sites, but particle {atom.index} is "
+                    "not a virtual site."
+                )
+                raise ValueError(errmsg)
+
+            # We can safely assume that the parent will always be Component
+            parent_atom_index = omm_system.getVirtualSite(atom.index).getParticle(0)
+            parent_res_index = omm_atoms[parent_atom_index].residue.index
+            residue_component.add(resids_to_comp[parent_res_index])
+
+        if len(residue_component) != 1:
+            errmsg = (
+                f"Virtual site residue {residue.index} has parent particles "
+                "spanning more than one Component"
+            )
+            raise ValueError(errmsg)
+
+        vsites_comp_resids[residue_component.pop()].append(residue.index)
+
+    return vsites_comp_resids
+
+
+def _fill_vsite_compresids(
+    interchange: Interchange,
+    comp_resids: dict[Component, npt.NDArray],
+) -> None:
+    """
+    In-place fill in the comp_resids dictionary with the
+    OpenMM Topology (note: assuming ``collate=False``)
+    residue indexes with virtual sites.
+
+    Parameters
+    ----------
+    interchange : Interchange
+      The Interchange object which defines the OpenMM
+      System / Topology we will be creating.
+    comp_resids : dict[Component, npt.NDArray]
+      The comp_resids dictionary to backfill with virtual
+      site residues. This dictionary should already have
+      non-virtual site residues assigned.
+
+    Notes
+    -----
+    This processes relies on:
+    * The OpenMM Topology being created via Interchange
+      with ``collate=False``.
+    * Each Molecule in the system having been assigned a
+      **unique** residue number **prior** to Interchange creation.
+    * The ``comp_resids`` dictionary has already been filled
+      with non-virtual site residues.
+    """
+    # Validate the number of known & missing residue indexes
+    known_resids = np.concatenate(list(comp_resids.values()), dtype=int)
+    known_resids_set = set(known_resids.tolist())
+
+    # There should only be unique indexes
+    if len(known_resids_set) != len(known_resids):
+        errmsg = "Non unique residue indexes found in comp_resids!"
+        raise ValueError(errmsg)
+
+    # Number of missing residues is the different between OpenMM Topology's
+    # reporter count and the set of known residue indexes
+    omm_top = interchange.to_openmm_topology(collate=False)
+    num_missing = omm_top.getNumResidues() - len(known_resids_set)
+
+    # If zero early return
+    if num_missing == 0:
+        return
+
+    # If less than zero, something went wrong
+    if num_missing < 0:
+        errmsg = (
+            "There are fewer OpenMM Topology residues than expected "
+            "molecules. Something went wrong!"
+        )
+        raise ValueError(errmsg)
+
+    # Number of missing residues has been validated, we now move ahead with
+    # backfilling the dictionary
+    logger.info(f"{num_missing} virtual site residues found, adding them to comp_resids")
+
+    # Get the vsite comp_resids dictionary
+    vsites_comp_resids = _get_virtual_site_components(
+        omm_system=interchange.to_openmm_system(),
+        omm_topology=omm_top,
+        nonvsite_comp_resids=comp_resids,
+        nonvsite_resids=known_resids_set,
+    )
+
+    # Check that we have assigned the same number of residues as were originally missing
+    n_assigned = sum(len(v) for v in vsites_comp_resids.values())
+    if n_assigned != num_missing:
+        errmsg = (
+            f"{n_assigned} virtual site residues were assigned, but "
+            f"{num_missing} residues needed to be assigned. "
+        )
+        raise ValueError(errmsg)
+
+    # Now we merge everything back and that's it!
+    for comp in comp_resids:
+        # force it back into ints since an empty list would cause floats
+        comp_resids[comp] = np.concatenate([comp_resids[comp], vsites_comp_resids[comp]]).astype(
+            int
+        )
 
 
 def _proteincomp_to_topology(protein_component: ProteinComponent) -> Topology:
@@ -477,8 +633,9 @@ def interchange_system_creation(
     Interchange : openff.interchange.Interchange
       Interchange object for the created system.
     comp_resids : dict[Component, npt.NDArray]
-      A dictionary defining the residue indices matching
-      various components in the system.
+      A dictionary defining the "canonical" (i.e. 0-indexed)
+      OpenMM Topology residue indices matching the various
+      components in the system.
     """
 
     # Component validations
@@ -579,5 +736,8 @@ def interchange_system_creation(
         solvent_component=solvent_component,
         protein_component=protein_component,
     )
+
+    # Finally we fill in comp_resids for any virtual sites we have
+    _fill_vsite_compresids(interchange, comp_resids)
 
     return interchange, comp_resids

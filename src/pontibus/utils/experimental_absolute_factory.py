@@ -3,7 +3,7 @@
 """
 A vendored and modified version of OpenMMTools' AbsoluteAlchemicalFactory.
 
-The modifications here, although experimental, should support virtual sites.
+The modifications here, although experimental, may support virtual sites.
 """
 
 import copy
